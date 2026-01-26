@@ -69,7 +69,7 @@ class SimaiPlayerController extends ChangeNotifier {
   double _musicVolume = 0.8;
   int _musicOffsetMs = 0;
   int _hitSoundOffsetMs = 0;
-  bool _hitSoundEnabled = true;
+  bool _hitSoundEnabled = false;
   bool _isFullScreen = false;
   SimaiBackgroundMode _backgroundMode = SimaiBackgroundMode.judgeLine;
   SimaiMirrorMode _mirrorMode = SimaiMirrorMode.none;
@@ -80,6 +80,7 @@ class SimaiPlayerController extends ChangeNotifier {
 
   double _chartTimeSnapshot = 0.0;
   double _totalDurationSnapshot = 0.0;
+  bool _isDisposed = false;
 
   SimaiPlayerController({
     required this.chart,
@@ -463,6 +464,9 @@ class SimaiPlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_isDisposed) return;
+    _isDisposed = true;
+    pause();
     _pollTimer?.cancel();
     _pollTimer = null;
     _game = null;
@@ -538,12 +542,14 @@ class SimaiPlayerPage extends StatefulWidget {
   final SimaiPlayerController controller;
   final String? title;
   final VoidCallback? onBack;
+  final bool disposeController;
 
   const SimaiPlayerPage({
     super.key,
     required this.controller,
     this.title,
     this.onBack,
+    this.disposeController = true,
   });
 
   @override
@@ -554,6 +560,7 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
   bool _showControls = true;
   Timer? _hideTimer;
   bool _isFullScreen = false;
+  bool _isLocked = false;
   late final GlobalKey _playerKey;
 
   @override
@@ -569,6 +576,9 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
     _hideTimer?.cancel();
     if (_isFullScreen) {
       _exitFullScreen();
+    }
+    if (widget.disposeController) {
+      widget.controller.dispose();
     }
     super.dispose();
   }
@@ -591,6 +601,14 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
     if (_showControls) {
       _startHideTimer();
     }
+  }
+
+  void _toggleLock() {
+    setState(() {
+      _isLocked = !_isLocked;
+      _showControls = true;
+    });
+    _startHideTimer();
   }
 
   void _toggleFullScreen() {
@@ -753,6 +771,13 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
                           child: Divider(),
                         ),
                         _buildSectionHeader(context, '音频设置'),
+                        _buildSwitchSetting(
+                          context,
+                          label: '正解音播放',
+                          icon: Icons.music_note,
+                          value: controller.hitSoundEnabled,
+                          onChanged: (v) => controller.hitSoundEnabled = v,
+                        ),
                         _buildSliderSetting(
                           context,
                           label: '音乐音量',
@@ -981,7 +1006,10 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
                   child: AspectRatio(aspectRatio: 1.0, child: player),
                 ),
               ),
-              SimaiPlayerControls(controller: widget.controller),
+              SafeArea(
+                top: false,
+                child: SimaiPlayerControls(controller: widget.controller),
+              ),
             ],
           );
         } else {
@@ -1002,18 +1030,12 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
                   Center(child: AspectRatio(aspectRatio: 1.0, child: player)),
                   // Top Bar
                   IgnorePointer(
-                    ignoring: !_showControls,
+                    ignoring: !_showControls || _isLocked,
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 300),
-                      opacity: _showControls ? 1.0 : 0.0,
+                      opacity: (_showControls && !_isLocked) ? 1.0 : 0.0,
                       child: Container(
                         width: double.infinity,
-                        padding: EdgeInsets.only(
-                          top: MediaQuery.of(context).padding.top + 8,
-                          bottom: 16,
-                          left: 8,
-                          right: 8,
-                        ),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
@@ -1024,47 +1046,55 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
                             ],
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            if (Navigator.canPop(context) ||
-                                widget.onBack != null)
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.arrow_back,
-                                  color: Colors.white,
+                        child: SafeArea(
+                          bottom: false,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+                            child: Row(
+                              children: [
+                                if (Navigator.canPop(context) ||
+                                    widget.onBack != null)
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.arrow_back,
+                                      color: Colors.white,
+                                    ),
+                                    onPressed:
+                                        widget.onBack ??
+                                        () => Navigator.of(context).pop(),
+                                  ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    widget.title ??
+                                        widget.controller.title ??
+                                        '',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                onPressed:
-                                    widget.onBack ??
-                                    () => Navigator.of(context).pop(),
-                              ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                widget.title ?? widget.controller.title ?? '',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                                const SizedBox(width: 8),
+                                Builder(
+                                  builder: (context) => IconButton(
+                                    icon: const Icon(
+                                      Icons.settings,
+                                      color: Colors.white,
+                                    ),
+                                    onPressed: () {
+                                      Scaffold.of(context).openEndDrawer();
+                                      _hideTimer
+                                          ?.cancel(); // Don't hide while drawer is open
+                                    },
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Builder(
-                              builder: (context) => IconButton(
-                                icon: const Icon(
-                                  Icons.settings,
-                                  color: Colors.white,
-                                ),
-                                onPressed: () {
-                                  Scaffold.of(context).openEndDrawer();
-                                  _hideTimer
-                                      ?.cancel(); // Don't hide while drawer is open
-                                },
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -1075,15 +1105,11 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
                     left: 0,
                     right: 0,
                     child: IgnorePointer(
-                      ignoring: !_showControls,
+                      ignoring: !_showControls || _isLocked,
                       child: AnimatedOpacity(
                         duration: const Duration(milliseconds: 300),
-                        opacity: _showControls ? 1.0 : 0.0,
+                        opacity: (_showControls && !_isLocked) ? 1.0 : 0.0,
                         child: Container(
-                          padding: EdgeInsets.only(
-                            bottom: MediaQuery.of(context).padding.bottom + 8,
-                            top: 16,
-                          ),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.bottomCenter,
@@ -1094,8 +1120,53 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
                               ],
                             ),
                           ),
-                          child: SimaiPlayerControls(
-                            controller: widget.controller,
+                          child: SafeArea(
+                            top: false,
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                top: 16,
+                                bottom: 8,
+                              ),
+                              child: SimaiPlayerControls(
+                                controller: widget.controller,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Lock Button
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: SafeArea(
+                      left: false,
+                      top: false,
+                      bottom: false,
+                      child: Center(
+                        child: IgnorePointer(
+                          ignoring: !_showControls,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 300),
+                            opacity: _showControls ? 1.0 : 0.0,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 16),
+                              child: IconButton(
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.black.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.all(12),
+                                ),
+                                icon: Icon(
+                                  _isLocked ? Icons.lock : Icons.lock_open,
+                                ),
+                                onPressed: _toggleLock,
+                              ),
+                            ),
                           ),
                         ),
                       ),

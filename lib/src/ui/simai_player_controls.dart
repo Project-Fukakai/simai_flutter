@@ -74,24 +74,6 @@ class _SimaiPlayerControlsState extends State<SimaiPlayerControls> {
                     tooltip: 'Next Measure',
                     onPressed: controller.nextMeasure,
                   ),
-                  Container(
-                    height: 24,
-                    width: 1,
-                    color: Colors.white24,
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      controller.hitSoundEnabled
-                          ? Icons.volume_up
-                          : Icons.volume_off,
-                      color: Colors.white,
-                    ),
-                    tooltip: 'Hit Sound Toggle',
-                    onPressed: () {
-                      controller.hitSoundEnabled = !controller.hitSoundEnabled;
-                    },
-                  ),
                   IconButton(
                     icon: const Icon(Icons.replay, color: Colors.white),
                     tooltip: 'Replay Measure',

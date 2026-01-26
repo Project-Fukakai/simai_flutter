@@ -74,13 +74,20 @@ void initState() {
 @override
 Widget build(BuildContext context) {
   return Scaffold(
-    body: SimaiPlayerPage(controller: _controller),
+    body: SimaiPlayerPage(
+      controller: _controller,
+      // 默认情况下，SimaiPlayerPage 在销毁时会自动销毁 controller
+      // By default, SimaiPlayerPage disposes the controller when it's destroyed
+      disposeController: true,
+    ),
   );
 }
 
 @override
 void dispose() {
-  _controller.dispose();
+  // 如果 disposeController 为 false，则需要手动销毁
+  // If disposeController is false, you need to dispose it manually
+  // _controller.dispose();
   super.dispose();
 }
 ```
