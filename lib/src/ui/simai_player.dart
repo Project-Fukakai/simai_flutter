@@ -561,6 +561,7 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
   Timer? _hideTimer;
   bool _isFullScreen = false;
   bool _isLocked = false;
+  bool _isManualExit = false;
   late final GlobalKey _playerKey;
 
   @override
@@ -613,8 +614,10 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
 
   void _toggleFullScreen() {
     if (_isFullScreen) {
+      _isManualExit = true;
       _exitFullScreen();
     } else {
+      _isManualExit = false;
       _enterFullScreen();
     }
   }
@@ -623,6 +626,7 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
     setState(() {
       _isFullScreen = true;
       _showControls = true;
+      _isManualExit = false;
     });
     widget.controller.isFullScreen = true;
     await FullScreenUtils.enterFullScreen();
@@ -957,10 +961,19 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (orientation == Orientation.landscape && !_isFullScreen) {
+        if (orientation == Orientation.landscape &&
+            !_isFullScreen &&
+            !_isManualExit) {
           _enterFullScreen();
-        } else if (orientation == Orientation.portrait && _isFullScreen) {
-          _exitFullScreen();
+        } else if (orientation == Orientation.portrait) {
+          if (_isFullScreen) {
+            _exitFullScreen();
+          }
+          if (_isManualExit) {
+            setState(() {
+              _isManualExit = false;
+            });
+          }
         }
       });
     }

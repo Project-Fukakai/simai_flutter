@@ -50,6 +50,7 @@ class SimaiGame extends FlameGame {
 
   int _audioBaseTimeMs = 0;
   int _audioBaseTimestampMs = 0;
+  int _lastSeekTimestampMs = 0;
   bool isResourcesLoaded = false;
 
   // SFX
@@ -98,6 +99,19 @@ class SimaiGame extends FlameGame {
     _positionSubscription = _audioPlayer.onPositionChanged.listen((p) {
       _debugAudioUpdates++;
       final int ms = p.inMilliseconds;
+
+      // Robustness: Ignore stale position updates immediately after a seek.
+      // Audio players often emit a few old positions before the seek is fully applied.
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastSeekTimestampMs < 500) {
+        final expectedAudioMs = ((chartTime - offset) * 1000).toInt();
+        // If the reported position is too far from our current chart-based expectation,
+        // it's likely a stale update from before the seek.
+        if ((ms - expectedAudioMs).abs() > 1000) {
+          return;
+        }
+      }
+
       final int? lastMs = _debugLastAudioPosMs;
       if (lastMs != null && (ms - lastMs).abs() > 500) {
         _debugAudioPosJumps++;
@@ -275,6 +289,7 @@ class SimaiGame extends FlameGame {
 
     chartTime = time;
     _pendingSeekReset = true;
+    _lastSeekTimestampMs = DateTime.now().millisecondsSinceEpoch;
     _debugSeekCalls++;
     _debugLastSeekReason = 'seek(syncAudio=$syncAudio)';
     final ms = ((chartTime - _effectiveHitSoundOffsetSeconds) * 1000).round();
@@ -361,7 +376,12 @@ class SimaiGame extends FlameGame {
     if (isPlaying) {
       // Update chartTime first so components update against current time.
       int nowMs = DateTime.now().millisecondsSinceEpoch;
-      if (_audioBaseTimestampMs > 0) {
+
+      // Sync logic:
+      // 1. If we are in the intro period (chartTime < offset), accumulate dt.
+      // 2. If we have a valid audio position, sync to it.
+      // 3. Otherwise, accumulate dt.
+      if (_audioBaseTimestampMs > 0 && chartTime >= offset) {
         double currentAudioTimeMs =
             _audioBaseTimeMs +
             (nowMs - _audioBaseTimestampMs) * playbackRate +
@@ -387,9 +407,7 @@ class SimaiGame extends FlameGame {
           _debugMaxAbsAudioError = absError;
         }
       } else {
-        // Fallback or initial state if no audio position received yet
-        // Maybe just accumulate dt as before, or do nothing?
-        // If we want to support offset even before audio starts:
+        // Fallback or intro period
         chartTime += dt * playbackRate;
       }
 

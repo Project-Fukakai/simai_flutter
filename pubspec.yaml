@@ -1,6 +1,6 @@
 name: simai_flutter
 description: A Flutter package for parsing, converting, and rendering simai format charts (maimai-style). Supports chart visualization with Flame engine and audio synchronization.
-version: 0.2.0
+version: 0.2.1
 homepage: https://github.com/your-username/simai_flutter
 repository: https://github.com/your-username/simai_flutter
 issue_tracker: https://github.com/your-username/simai_flutter/issues

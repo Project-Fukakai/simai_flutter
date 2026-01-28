@@ -10,6 +10,11 @@ Future<void> enterFullScreenImpl() async {
 
 Future<void> exitFullScreenImpl() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  // Force back to portrait first to ensure we leave landscape mode
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+  // Then allow other orientations again
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,

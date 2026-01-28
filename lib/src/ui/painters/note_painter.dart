@@ -399,7 +399,6 @@ class NotePainter {
       else if (currentTime < startTime) {
         // "Arrive at judge line, disappear then zoom in and fade in"
         // The track should remain VISIBLE and STATIC during this wait phase.
-        // "轨迹出现后不要再随星星消失一下" -> "After track appears, it should NOT disappear briefly with the star".
         // The track appeared during approach (fade in).
         // So once it hits noteTime, it should stay fully visible (Alpha 255) until the star starts moving (or just stay visible).
 
@@ -664,7 +663,7 @@ class NotePainter {
                     effectiveColor,
                     starScale,
                     starAlpha,
-                    starRotation + tanCenter.angle,
+                    starRotation - tanCenter.angle,
                     noteScale,
                   );
                 }
@@ -676,7 +675,7 @@ class NotePainter {
                     effectiveColor,
                     starScale,
                     starAlpha,
-                    starRotation + tanLeft.angle,
+                    starRotation - tanLeft.angle,
                     noteScale,
                   );
                 }
@@ -688,7 +687,7 @@ class NotePainter {
                     effectiveColor,
                     starScale,
                     starAlpha,
-                    starRotation + tanRight.angle,
+                    starRotation - tanRight.angle,
                     noteScale,
                   );
                 }
@@ -717,7 +716,7 @@ class NotePainter {
                 effectiveColor,
                 starScale,
                 starAlpha,
-                starRotation + tangent.angle,
+                starRotation - tangent.angle,
                 noteScale,
               );
             }

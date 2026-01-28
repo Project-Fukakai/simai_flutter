@@ -88,6 +88,12 @@ class SlidePathGenerator {
         bool isCw = (type == SlideType.curveCw);
         double rMid = radius * 0.39;
 
+        // Vortex logic: q/p slides with distance 0 or 3 are typically loops
+        int dist = isCw
+            ? (endLoc.index - start.index + 8) % 8
+            : (start.index - endLoc.index + 8) % 8;
+        bool forceFullCircle = (dist == 0 || dist == 3);
+
         _addTangentArcPath(
           path,
           startPos,
@@ -95,7 +101,7 @@ class SlidePathGenerator {
           center,
           rMid,
           isCw,
-          start.index == endLoc.index,
+          forceFullCircle,
         );
         break;
 
@@ -221,7 +227,10 @@ class SlidePathGenerator {
 
     if (forceFullCircle) {
       Rect rect = Rect.fromCircle(center: center, radius: rMid);
-      path.arcTo(rect, thetaEntry, isCw ? 1.25 * pi : -1.25 * pi, false);
+      double fullSweep = isCw ? 2 * pi : -2 * pi;
+      // Split to ensure it renders correctly as a loop
+      path.arcTo(rect, thetaEntry, fullSweep / 2, false);
+      path.arcTo(rect, thetaEntry + fullSweep / 2, fullSweep / 2, false);
       path.lineTo(endPos.dx, endPos.dy);
       return;
     }
@@ -248,7 +257,13 @@ class SlidePathGenerator {
     }
 
     Rect rect = Rect.fromCircle(center: center, radius: rMid);
-    path.arcTo(rect, thetaEntry, sweep, false);
+    if (sweep.abs() >= 2 * pi - 0.001) {
+      // Split large arcs to ensure they render as loops and correctly record metrics
+      path.arcTo(rect, thetaEntry, sweep / 2, false);
+      path.arcTo(rect, thetaEntry + sweep / 2, sweep / 2, false);
+    } else {
+      path.arcTo(rect, thetaEntry, sweep, false);
+    }
 
     // 7. Draw Exit -> End
     path.lineTo(endPos.dx, endPos.dy);
@@ -487,7 +502,12 @@ class SlidePathGenerator {
     // Using arcTo
     // sweepAngle
     double sweepAngle = endAngle - startAngle;
-    path.arcTo(rect, startAngle, sweepAngle, false);
+    if (sweepAngle.abs() >= 2 * pi - 0.001) {
+      path.arcTo(rect, startAngle, sweepAngle / 2, false);
+      path.arcTo(rect, startAngle + sweepAngle / 2, sweepAngle / 2, false);
+    } else {
+      path.arcTo(rect, startAngle, sweepAngle, false);
+    }
   }
 
   static void _addZigZag(
