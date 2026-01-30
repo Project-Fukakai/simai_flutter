@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui' as ui;
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:audioplayers/audioplayers.dart';
 import '../../simai_flutter.dart';
 import 'simai_colors.dart';
 import 'components/note_component.dart';
@@ -47,6 +46,10 @@ class SimaiGame extends FlameGame {
   int? _debugLastAudioPosMs;
   double _debugMaxAbsAudioError = 0.0;
   double _debugMaxAbsCorrection = 0.0;
+  int _debugSfxPlayCalls = 0;
+  int _debugSfxPoolPlays = 0;
+  int _debugSfxFallbackPlays = 0;
+  int _debugSfxPlayDrops = 0;
 
   int _audioBaseTimeMs = 0;
   int _audioBaseTimestampMs = 0;
@@ -56,11 +59,12 @@ class SimaiGame extends FlameGame {
   // SFX
   final List<AudioPlayer> _sfxPool = [];
   int _sfxPoolIndex = 0;
-  static const int _sfxPoolSize = 16;
-  static const double _hitSoundBaseOffsetSeconds = -0.050;
+  static const int _sfxPoolSize = 32;
+  static const double _hitSoundBaseOffsetSeconds = -0.2;
   List<int> _sfxEventTimesMs = const [];
   int _sfxEventIndex = 0;
   int _lastSfxCheckTimeMs = 0;
+  AudioPool? _flameSfxPool;
 
   SimaiGame({
     required this.chart,
@@ -122,43 +126,26 @@ class SimaiGame extends FlameGame {
     });
 
     // Initialize SFX Pool
-    // Load from package assets using rootBundle to avoid AssetSource path issues on Web/different platforms
-    // and convert to Data URI for reliable playback.
-    final assetPath = 'packages/simai_flutter/assets/answer.wav';
-    Source sfxSource;
-
     try {
-      final data = await rootBundle.load(assetPath);
-      final bytes = data.buffer.asUint8List();
-      final base64String = base64Encode(bytes);
-      final dataUri = 'data:audio/wav;base64,$base64String';
-      sfxSource = UrlSource(dataUri);
-      debugPrint("SFX: Loaded $assetPath (${bytes.length} bytes) via Data URI");
-    } catch (e) {
-      debugPrint("SFX: Failed to load $assetPath from bundle: $e");
-      // Fallback to AssetSource if bundle load fails (though unlikely if file exists)
-      sfxSource = AssetSource(assetPath);
-    }
-
-    _rebuildSfxEventTimes();
-
-    for (int i = 0; i < _sfxPoolSize; i++) {
-      final player = AudioPlayer();
-      // Set logs to verify errors
-      // player.setLogHandler((msg) => debugPrint("SFX Player Log: $msg"));
-
+      final assetPath = 'packages/simai_flutter/assets/answer.wav';
+      Source sfxSource;
       try {
-        await player.setSource(sfxSource);
-        await player.setReleaseMode(ReleaseMode.stop);
-        // PlayerMode.lowLatency is Android only, but harmless to set if supported?
-        // Actually it's a constructor param or setPlayerMode method.
-        // In 6.x, setPlayerMode is async.
-        await player.setPlayerMode(PlayerMode.lowLatency);
+        final data = await rootBundle.load(assetPath);
+        final bytes = data.buffer.asUint8List();
+        sfxSource = BytesSource(bytes, mimeType: 'audio/wav');
+        debugPrint('SFX: Loaded $assetPath (${bytes.length} bytes)');
+        _flameSfxPool = await AudioPool.create(
+          source: sfxSource,
+          maxPlayers: _sfxPoolSize,
+        );
       } catch (e) {
-        debugPrint("SFX: Error initializing player $i: $e");
+        debugPrint('SFX: Failed to load $assetPath from bundle: $e');
       }
-      _sfxPool.add(player);
+      debugPrint('SFX: Initialized Flame AudioPool (maxPlayers=$_sfxPoolSize)');
+    } catch (e) {
+      debugPrint('SFX: Flame AudioPool init failed: $e');
     }
+    _rebuildSfxEventTimes();
 
     if (audioSource != null) {
       try {
@@ -424,7 +411,8 @@ class SimaiGame extends FlameGame {
           'audioUpdates=$_debugAudioUpdates audioJumps=$_debugAudioPosJumps '
           'maxErr=${_debugMaxAbsAudioError.toStringAsFixed(4)} '
           'maxCorr=${_debugMaxAbsCorrection.toStringAsFixed(4)} '
-          'lastSeek=$_debugLastSeekReason',
+          'lastSeek=$_debugLastSeekReason '
+          'sfx(calls=$_debugSfxPlayCalls pool=$_debugSfxPoolPlays fb=$_debugSfxFallbackPlays drops=$_debugSfxPlayDrops enabled=${_flameSfxPool != null} size=$_sfxPoolSize)',
         );
         _debugNextLogTime = renderTime + 1.0;
         _debugNotesAdded = 0;
@@ -434,6 +422,10 @@ class SimaiGame extends FlameGame {
         _debugResizeCalls = 0;
         _debugMaxAbsAudioError = 0.0;
         _debugMaxAbsCorrection = 0.0;
+        _debugSfxPlayCalls = 0;
+        _debugSfxPoolPlays = 0;
+        _debugSfxFallbackPlays = 0;
+        _debugSfxPlayDrops = 0;
       }
     } else {
       // Keep engine running (lifecycle events), but freeze time
@@ -457,21 +449,32 @@ class SimaiGame extends FlameGame {
   }
 
   void _playDaSound() {
+    _debugSfxPlayCalls++;
+    // Prefer Flame AudioPool
+    final pool = _flameSfxPool;
+    if (pool != null) {
+      try {
+        pool.start();
+        _debugSfxPoolPlays++;
+      } catch (e) {
+        debugPrint('SFX: AudioPool start failed: $e');
+        _debugSfxPlayDrops++;
+      }
+      return;
+    }
+    // Fallback to audioplayers pool
     if (_sfxPool.isEmpty) return;
-
     final player = _sfxPool[_sfxPoolIndex];
-
-    // Force restart playback
-    // If playing, seek to start. If stopped, resume.
     player
         .seek(Duration.zero)
         .then((_) {
-          player.resume();
+          _debugSfxFallbackPlays++;
+          return player.resume();
         })
         .catchError((e) {
-          debugPrint("SFX: Play failed: $e");
+          debugPrint('SFX: Play failed: $e');
+          _debugSfxPlayDrops++;
         });
-
     _sfxPoolIndex = (_sfxPoolIndex + 1) % _sfxPoolSize;
   }
 

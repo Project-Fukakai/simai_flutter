@@ -168,6 +168,17 @@ class NotePainter {
         baseColor = isBreak
             ? SimaiColors.tapBreak
             : (isEach ? SimaiColors.tapEach : SimaiColors.tapNormal);
+        if (progress <= 1.0) {
+          _drawApproachArc(
+            canvas,
+            center,
+            currentRadius,
+            angle,
+            baseColor,
+            alpha,
+            noteScale,
+          );
+        }
         _drawTap(
           canvas,
           position,
@@ -205,6 +216,15 @@ class NotePainter {
 
         // Draw Approach Star (disappears after hit)
         if (progress <= 1.0) {
+          _drawApproachArc(
+            canvas,
+            center,
+            currentRadius,
+            angle,
+            headColor,
+            alpha,
+            noteScale,
+          );
           double rotation = angle;
           if (rotateSlideStar) {
             // Rotate during approach: progress goes 0 -> 1
@@ -281,6 +301,17 @@ class NotePainter {
         // Meaning: Head stays at judge line. Tail approaches from center.
         // If progress > 1.0 (after hit), head stays at radius.
 
+        if (progress <= 1.0) {
+          _drawApproachArc(
+            canvas,
+            center,
+            currentRadius,
+            angle,
+            baseColor,
+            alpha,
+            noteScale,
+          );
+        }
         _drawHold(
           canvas,
           center,
@@ -324,6 +355,17 @@ class NotePainter {
         break;
       case NoteType.breakNote:
         baseColor = SimaiColors.tapBreak;
+        if (progress <= 1.0) {
+          _drawApproachArc(
+            canvas,
+            center,
+            currentRadius,
+            angle,
+            baseColor,
+            alpha,
+            noteScale,
+          );
+        }
         _drawTap(canvas, position, baseColor, scale, alpha, noteScale);
         break;
       default:
@@ -334,6 +376,46 @@ class NotePainter {
           10 * scale,
           Paint()..color = baseColor.withAlpha(alpha),
         );
+    }
+  }
+
+  static void _drawApproachArc(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double angle,
+    Color color,
+    int alpha,
+    double noteScale,
+  ) {
+    final double sweep = pi / 2;
+    final double start = angle - sweep / 2;
+    const int segments = 36;
+    final double baseWidth = 4.0 * noteScale;
+    for (int i = 0; i < segments; i++) {
+      final double t0 = i / segments;
+      final double t1 = (i + 1) / segments;
+      final double a0 = start + sweep * t0;
+      final double a1 = start + sweep * t1;
+      final double tm = (t0 + t1) * 0.5;
+      final double fade = sin(pi * tm).clamp(0.0, 1.0);
+      final double width = baseWidth * (0.5 + 0.5 * fade);
+      final int segAlpha = (alpha * fade).round();
+      final Paint p = Paint()
+        ..color = color.withAlpha(segAlpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      final Offset p0 = Offset(
+        center.dx + radius * cos(a0),
+        center.dy + radius * sin(a0),
+      );
+      final Offset p1 = Offset(
+        center.dx + radius * cos(a1),
+        center.dy + radius * sin(a1),
+      );
+      canvas.drawLine(p0, p1, p);
     }
   }
 
