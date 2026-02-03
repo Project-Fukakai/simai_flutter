@@ -177,6 +177,7 @@ class NotePainter {
             baseColor,
             alpha,
             noteScale,
+            connectEach: isEach,
           );
         }
         _drawTap(
@@ -224,6 +225,7 @@ class NotePainter {
             headColor,
             alpha,
             noteScale,
+            connectEach: isEach,
           );
           double rotation = angle;
           if (rotateSlideStar) {
@@ -257,7 +259,6 @@ class NotePainter {
           approachTime,
           mirrorMode: mirrorMode,
           rotateSlideStar: rotateSlideStar,
-          pinkSlideStar: pinkSlideStar,
           standardBreakSlide: standardBreakSlide,
           slidePathCache: slidePathCache,
           slideLengthCache: slideLengthCache,
@@ -310,6 +311,7 @@ class NotePainter {
             baseColor,
             alpha,
             noteScale,
+            connectEach: isEach,
           );
         }
         _drawHold(
@@ -364,6 +366,7 @@ class NotePainter {
             baseColor,
             alpha,
             noteScale,
+            connectEach: isEach,
           );
         }
         _drawTap(canvas, position, baseColor, scale, alpha, noteScale);
@@ -386,27 +389,33 @@ class NotePainter {
     double angle,
     Color color,
     int alpha,
-    double noteScale,
-  ) {
+    double noteScale, {
+    bool connectEach = false,
+  }) {
     final double sweep = pi / 2;
     final double start = angle - sweep / 2;
-    const int segments = 36;
-    final double baseWidth = 4.0 * noteScale;
+    const int segments = 10;
+    final double baseWidth = 1.6 * noteScale;
+    final int maxAlpha = (alpha * 0.5).round();
+
+    final Paint p = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = baseWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..isAntiAlias = true
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.8);
+
     for (int i = 0; i < segments; i++) {
       final double t0 = i / segments;
       final double t1 = (i + 1) / segments;
       final double a0 = start + sweep * t0;
       final double a1 = start + sweep * t1;
       final double tm = (t0 + t1) * 0.5;
-      final double fade = sin(pi * tm).clamp(0.0, 1.0);
-      final double width = baseWidth * (0.5 + 0.5 * fade);
-      final int segAlpha = (alpha * fade).round();
-      final Paint p = Paint()
-        ..color = color.withAlpha(segAlpha)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = width
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
+      final double baseFade = sin(pi * tm).clamp(0.0, 1.0);
+      final double fade = connectEach ? (0.35 + 0.65 * baseFade) : baseFade;
+      final int segAlpha = (maxAlpha * fade).round();
+      p.color = color.withAlpha(segAlpha);
       final Offset p0 = Offset(
         center.dx + radius * cos(a0),
         center.dy + radius * sin(a0),
@@ -432,7 +441,6 @@ class NotePainter {
     double approachTime, {
     SimaiMirrorMode mirrorMode = SimaiMirrorMode.none,
     bool rotateSlideStar = true,
-    bool pinkSlideStar = false,
     bool standardBreakSlide = false,
     Map<(Note, SlidePath), Path>? slidePathCache,
     Map<(Note, SlidePath), double>? slideLengthCache,
@@ -457,14 +465,10 @@ class NotePainter {
         final double key = (startTime * 1000).round() / 1000.0;
         final int count = slideStartCounts?[key] ?? 0;
         if (count > 1) {
-          effectiveColor = pinkSlideStar
-              ? SimaiColors.tapEach
-              : SimaiColors.slideEach;
+          effectiveColor = SimaiColors.slideEach;
         } else if (color == SimaiColors.slideEach ||
             color == SimaiColors.slideNormal) {
-          effectiveColor = pinkSlideStar
-              ? SimaiColors.tapNormal
-              : SimaiColors.slideNormal;
+          effectiveColor = SimaiColors.slideNormal;
         }
       }
 

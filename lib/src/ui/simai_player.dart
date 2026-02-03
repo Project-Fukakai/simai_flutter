@@ -63,7 +63,7 @@ class SimaiPlayerController extends ChangeNotifier {
   SimaiGame? _game;
   Timer? _pollTimer;
 
-  double _speed = 6.0;
+  double _speed = 8.0;
   bool _isPlaying = false;
   double _playbackRate = 1.0;
   double _musicVolume = 0.8;
@@ -123,7 +123,7 @@ class SimaiPlayerController extends ChangeNotifier {
   }
 
   double get approachTime {
-    final safeSpeed = _speed.isFinite ? _speed : 6.0;
+    final safeSpeed = _speed.isFinite ? _speed : 8.0;
     final clampedSpeed = safeSpeed.clamp(3.0, 9.0).toDouble();
     return 3.6 / clampedSpeed;
   }
@@ -133,10 +133,11 @@ class SimaiPlayerController extends ChangeNotifier {
   }
 
   set speed(double value) {
-    final safeValue = value.isFinite ? value : 6.0;
+    final safeValue = value.isFinite ? value : 8.0;
     final clamped = safeValue.clamp(3.0, 9.0).toDouble();
-    if (_speed == clamped) return;
-    _speed = clamped;
+    final quantized = (clamped / 0.25).round() * 0.25;
+    if (_speed == quantized) return;
+    _speed = quantized;
     _applyToGame();
     notifyListeners();
   }
@@ -740,6 +741,18 @@ class _SimaiPlayerPageState extends State<SimaiPlayerPage> {
                             ),
                           ],
                           onChanged: (v) => controller.backgroundMode = v,
+                        ),
+                        _buildSliderSetting(
+                          context,
+                          label: '流速',
+                          icon: Icons.speed,
+                          value: controller.speed,
+                          min: 3.0,
+                          max: 9.0,
+                          divisions: 24,
+                          onChanged: (v) => controller.speed = v,
+                          valueSuffix:
+                              'x${controller.speed.toStringAsFixed(2)}',
                         ),
                         const SizedBox(height: 16),
                         _buildSwitchSetting(

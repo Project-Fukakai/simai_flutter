@@ -5,8 +5,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import '../../simai_flutter.dart';
 import 'simai_colors.dart';
 import 'components/note_component.dart';
@@ -56,15 +56,12 @@ class SimaiGame extends FlameGame {
   int _lastSeekTimestampMs = 0;
   bool isResourcesLoaded = false;
 
-  // SFX
-  final List<AudioPlayer> _sfxPool = [];
-  int _sfxPoolIndex = 0;
-  static const int _sfxPoolSize = 32;
-  static const double _hitSoundBaseOffsetSeconds = -0.2;
+  static const double _hitSoundBaseOffsetSeconds = -0.15;
   List<int> _sfxEventTimesMs = const [];
   int _sfxEventIndex = 0;
   int _lastSfxCheckTimeMs = 0;
-  AudioPool? _flameSfxPool;
+  final SoLoud _soloud = SoLoud.instance;
+  AudioSource? _sfxSource;
 
   SimaiGame({
     required this.chart,
@@ -125,25 +122,21 @@ class SimaiGame extends FlameGame {
       _audioBaseTimestampMs = DateTime.now().millisecondsSinceEpoch;
     });
 
-    // Initialize SFX Pool
     try {
+      await _soloud.init();
       final assetPath = 'packages/simai_flutter/assets/answer.wav';
-      Source sfxSource;
       try {
-        final data = await rootBundle.load(assetPath);
-        final bytes = data.buffer.asUint8List();
-        sfxSource = BytesSource(bytes, mimeType: 'audio/wav');
-        debugPrint('SFX: Loaded $assetPath (${bytes.length} bytes)');
-        _flameSfxPool = await AudioPool.create(
-          source: sfxSource,
-          maxPlayers: _sfxPoolSize,
-        );
+        if (kIsWeb) {
+          _sfxSource = await _soloud.loadAsset(assetPath, mode: LoadMode.disk);
+        } else {
+          _sfxSource = await _soloud.loadAsset(assetPath);
+        }
+        debugPrint('SFX: SoLoud loaded $assetPath');
       } catch (e) {
-        debugPrint('SFX: Failed to load $assetPath from bundle: $e');
+        debugPrint('SFX: SoLoud failed to load $assetPath: $e');
       }
-      debugPrint('SFX: Initialized Flame AudioPool (maxPlayers=$_sfxPoolSize)');
     } catch (e) {
-      debugPrint('SFX: Flame AudioPool init failed: $e');
+      debugPrint('SFX: SoLoud init failed: $e');
     }
     _rebuildSfxEventTimes();
 
@@ -180,8 +173,10 @@ class SimaiGame extends FlameGame {
   void onRemove() {
     _positionSubscription?.cancel();
     _audioPlayer.dispose();
-    for (var player in _sfxPool) {
-      player.dispose();
+    final src = _sfxSource;
+    if (src != null) {
+      _soloud.disposeSource(src);
+      _sfxSource = null;
     }
     super.onRemove();
   }
@@ -412,7 +407,7 @@ class SimaiGame extends FlameGame {
           'maxErr=${_debugMaxAbsAudioError.toStringAsFixed(4)} '
           'maxCorr=${_debugMaxAbsCorrection.toStringAsFixed(4)} '
           'lastSeek=$_debugLastSeekReason '
-          'sfx(calls=$_debugSfxPlayCalls pool=$_debugSfxPoolPlays fb=$_debugSfxFallbackPlays drops=$_debugSfxPlayDrops enabled=${_flameSfxPool != null} size=$_sfxPoolSize)',
+          'sfx(calls=$_debugSfxPlayCalls soloud=$_debugSfxPoolPlays fb=$_debugSfxFallbackPlays drops=$_debugSfxPlayDrops enabled=${_sfxSource != null})',
         );
         _debugNextLogTime = renderTime + 1.0;
         _debugNotesAdded = 0;
@@ -450,32 +445,18 @@ class SimaiGame extends FlameGame {
 
   void _playDaSound() {
     _debugSfxPlayCalls++;
-    // Prefer Flame AudioPool
-    final pool = _flameSfxPool;
-    if (pool != null) {
-      try {
-        pool.start();
-        _debugSfxPoolPlays++;
-      } catch (e) {
-        debugPrint('SFX: AudioPool start failed: $e');
-        _debugSfxPlayDrops++;
-      }
+    final src = _sfxSource;
+    if (src == null) {
+      _debugSfxPlayDrops++;
       return;
     }
-    // Fallback to audioplayers pool
-    if (_sfxPool.isEmpty) return;
-    final player = _sfxPool[_sfxPoolIndex];
-    player
-        .seek(Duration.zero)
-        .then((_) {
-          _debugSfxFallbackPlays++;
-          return player.resume();
-        })
-        .catchError((e) {
-          debugPrint('SFX: Play failed: $e');
-          _debugSfxPlayDrops++;
-        });
-    _sfxPoolIndex = (_sfxPoolIndex + 1) % _sfxPoolSize;
+    try {
+      _soloud.play(src);
+      _debugSfxPoolPlays++;
+    } catch (e) {
+      debugPrint('SFX: SoLoud play failed: $e');
+      _debugSfxPlayDrops++;
+    }
   }
 
   void _rebuildSfxEventTimes() {
